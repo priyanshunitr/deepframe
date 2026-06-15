@@ -6,10 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "backend:build": "tsc -p backend/tsconfig.json",
-    "backend:start": "node backend/dist/server.js",
-    "backend:typecheck": "tsc -p backend/tsconfig.json --noEmit"
+    "lint": "eslint"
   },
   "dependencies": {
     "next": "16.2.9",
