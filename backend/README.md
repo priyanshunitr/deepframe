@@ -1,6 +1,6 @@
 # Backend
 
-Standalone TypeScript HTTP server for the Deepframe backend.
+Standalone Express + TypeScript server for the Deepframe backend.
 
 ## Scripts
 
@@ -36,5 +36,3 @@ npm run db:migrate
 ## Endpoints
 
 - `GET /` - API status
-- `GET /health` - Health check with uptime and timestamp
-- `GET /health/db` - Database connectivity check
