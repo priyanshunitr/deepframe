@@ -9,19 +9,52 @@ datasource db {
 
 enum ProjectStatus {
   DRAFT
+  UPLOADING
   ANALYZING
+  STORYBOARDING
   READY
   RENDERING
   EXPORTED
   FAILED
+  ARCHIVED
 }
 
 enum AssetType {
   AUDIO
   VIDEO
   IMAGE
+  SCRIPT
+  DOCUMENT
   BRAND
   OTHER
+}
+
+enum AssetSource {
+  UPLOAD
+  AI_GENERATED
+  IMPORTED
+}
+
+enum AnalysisJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AnalysisJobType {
+  TRANSCRIBE
+  STORYBOARD
+  TIMELINE
+  MEDIA_METADATA
+}
+
+enum TimelineSource {
+  AI_GENERATED
+  USER_EDITED
+  REVISION
+  IMPORTED
 }
 
 enum RenderJobStatus {
@@ -30,6 +63,11 @@ enum RenderJobStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+enum RenderJobType {
+  PREVIEW
+  FINAL_EXPORT
 }
 
 enum ExportStatus {
@@ -43,90 +81,160 @@ model User {
   id        String    @id @default(cuid())
   email     String    @unique
   name      String?
+  imageUrl  String?
   projects  Project[]
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
 
 model Project {
-  id               String            @id @default(cuid())
-  ownerId          String?
-  title            String
-  prompt           String?
-  status           ProjectStatus     @default(DRAFT)
-  owner            User?             @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  assets           Asset[]
-  timelineVersions TimelineVersion[]
-  renderJobs       RenderJob[]
-  transcripts      Transcript[]
-  exports          Export[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                       String            @id @default(cuid())
+  ownerId                  String?
+  currentTimelineVersionId String?           @unique
+  title                    String
+  prompt                   String?
+  script                   String?
+  description              String?
+  status                   ProjectStatus     @default(DRAFT)
+  width                    Int               @default(1920)
+  height                   Int               @default(1080)
+  fps                      Int               @default(30)
+  duration                 Float?
+  settings                 Json?
+  owner                    User?             @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  currentTimelineVersion   TimelineVersion?  @relation("CurrentTimelineVersion", fields: [currentTimelineVersionId], references: [id], onDelete: SetNull)
+  assets                   Asset[]
+  timelineVersions         TimelineVersion[] @relation("ProjectTimelineVersions")
+  analysisJobs             AnalysisJob[]
+  renderJobs               RenderJob[]
+  transcripts              Transcript[]
+  exports                  Export[]
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 
   @@index([ownerId])
+  @@index([currentTimelineVersionId])
   @@index([status])
 }
 
 model Asset {
-  id          String       @id @default(cuid())
-  projectId   String
-  type        AssetType
-  filename    String
-  mimeType    String?
-  storageKey  String
-  url         String?
-  sizeBytes   BigInt?
-  metadata    Json?
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  transcripts Transcript[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String        @id @default(cuid())
+  projectId    String
+  type         AssetType
+  source       AssetSource   @default(UPLOAD)
+  filename     String
+  mimeType     String?
+  storageKey   String
+  publicUrl    String?
+  originalUrl  String?
+  sizeBytes    BigInt?
+  width        Int?
+  height       Int?
+  duration     Float?
+  checksum     String?
+  metadata     Json?
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analysisJobs AnalysisJob[]
+  transcripts  Transcript[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([projectId])
   @@index([type])
+  @@index([storageKey])
 }
 
 model TimelineVersion {
-  id        String   @id @default(cuid())
-  projectId String
-  version   Int
-  timeline  Json
-  isCurrent Boolean  @default(false)
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id                 String         @id @default(cuid())
+  projectId          String
+  version            Int
+  source             TimelineSource @default(AI_GENERATED)
+  storyboard         Json?
+  timeline           Json
+  summary            String?
+  revisionPrompt     String?
+  isCurrent          Boolean        @default(false)
+  project            Project        @relation("ProjectTimelineVersions", fields: [projectId], references: [id], onDelete: Cascade)
+  currentForProjects Project[]      @relation("CurrentTimelineVersion")
+  analysisJobs       AnalysisJob[]
+  renderJobs         RenderJob[]
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   @@unique([projectId, version])
   @@index([projectId, isCurrent])
 }
 
-model RenderJob {
-  id          String          @id @default(cuid())
-  projectId   String
-  status      RenderJobStatus @default(QUEUED)
-  progress    Int             @default(0)
-  error       String?
-  outputUrl   String?
-  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  exports     Export[]
-  createdAt   DateTime        @default(now())
-  startedAt   DateTime?
-  completedAt DateTime?
-  updatedAt   DateTime        @updatedAt
+model AnalysisJob {
+  id                String            @id @default(cuid())
+  projectId         String
+  assetId           String?
+  timelineVersionId String?
+  type              AnalysisJobType
+  status            AnalysisJobStatus @default(QUEUED)
+  queueId           String?
+  provider          String?
+  model             String?
+  input             Json?
+  output            Json?
+  error             String?
+  attempts          Int               @default(0)
+  project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset             Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  timelineVersion   TimelineVersion?  @relation(fields: [timelineVersionId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  updatedAt         DateTime          @updatedAt
 
   @@index([projectId])
+  @@index([assetId])
+  @@index([timelineVersionId])
   @@index([status])
+  @@index([type])
+  @@index([queueId])
+}
+
+model RenderJob {
+  id                String           @id @default(cuid())
+  projectId         String
+  timelineVersionId String?
+  type              RenderJobType    @default(FINAL_EXPORT)
+  status            RenderJobStatus  @default(QUEUED)
+  progress          Int              @default(0)
+  queueId           String?
+  renderSettings    Json?
+  outputStorageKey  String?
+  outputUrl         String?
+  error             String?
+  attempts          Int              @default(0)
+  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  timelineVersion   TimelineVersion? @relation(fields: [timelineVersionId], references: [id], onDelete: SetNull)
+  exports           Export[]
+  createdAt         DateTime         @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  updatedAt         DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([timelineVersionId])
+  @@index([status])
+  @@index([queueId])
 }
 
 model Transcript {
-  id        String   @id @default(cuid())
-  projectId String
-  assetId   String?
-  text      String
-  segments  Json?
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  projectId  String
+  assetId    String?
+  provider   String?
+  language   String?
+  text       String
+  segments   Json?
+  confidence Float?
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset      Asset?   @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([projectId])
   @@index([assetId])
@@ -138,11 +246,15 @@ model Export {
   renderJobId String?
   status      ExportStatus @default(QUEUED)
   format      String       @default("mp4")
+  codec       String?
   width       Int?
   height      Int?
+  fps         Int?
   duration    Float?
-  url         String?
+  storageKey  String?
+  publicUrl   String?
   sizeBytes   BigInt?
+  metadata    Json?
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   renderJob   RenderJob?   @relation(fields: [renderJobId], references: [id], onDelete: SetNull)
   createdAt   DateTime     @default(now())
@@ -152,4 +264,5 @@ model Export {
   @@index([projectId])
   @@index([renderJobId])
   @@index([status])
+  @@index([storageKey])
 }
